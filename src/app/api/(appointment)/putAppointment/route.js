@@ -133,10 +133,6 @@
 //     );
 //   }
 // }
- 
-
-
-
 
 import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
@@ -144,7 +140,6 @@ import { doc, updateDoc, Timestamp } from "firebase/firestore";
 import connectDB from "@/lib/db";
 import Appointment from "@/models/appointment/schema";
 import { checkAuthKey } from "@/lib/authkey";
-
 
 import { messaging } from "@/lib/firebaseAdmin";
 import User from "@/models/user/schema";
@@ -181,25 +176,24 @@ export async function PUT(req) {
       price,
       status,
     } = body;
-//Notification date
+    //Notification date
     const formatDateTime = (date, time) => {
-  const d = new Date(date);
+      const d = new Date(date);
 
-  const formattedDate = d.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+      const formattedDate = d.toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
 
-  return `${formattedDate} at ${time}`;
-};
+      return `${formattedDate} at ${time}`;
+    };
 
-    
     // 🧾 Validate appointmentId
     if (!appointmentId) {
       return NextResponse.json(
         { success: false, message: "Missing appointmentId." },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: corsHeaders },
       );
     }
 
@@ -231,64 +225,61 @@ export async function PUT(req) {
           updatedAt: new Date(),
         },
       },
-      { new: true } // return updated document
+      { new: true }, // return updated document
     );
 
     if (!updatedAppointment) {
       return NextResponse.json(
         { success: false, message: "Appointment not found." },
-        { status: 404, headers: corsHeaders }
+        { status: 404, headers: corsHeaders },
       );
     }
     // 🔔 SEND PUSH NOTIFICATION TO USER (ON CANCEL / COMPLETE)
-// 🔔 SEND PUSH NOTIFICATION TO USER
-try {
-  if (finalStatus === "cancelled" || finalStatus === "completed") {
-    const user = await User.findById(updatedAppointment.userId).select("fcmToken");
+    // 🔔 SEND PUSH NOTIFICATION TO USER
+    try {
+      if (finalStatus === "cancelled" || finalStatus === "completed") {
+        const user = await User.findById(updatedAppointment.userId).select(
+          "fcmToken",
+        );
 
-    if (!user?.fcmToken) {
-      // console.log("❌ User FCM token not found");
-      return;
+        if (user?.fcmToken) {
+          const bookingTime = formatDateTime(
+            updatedAppointment.date,
+            updatedAppointment.time,
+          );
+
+          const title =
+            finalStatus === "cancelled"
+              ? "❌ Appointment Cancelled"
+              : "✅ Appointment Completed";
+
+          const body =
+            finalStatus === "cancelled"
+              ? `Your appointment on ${bookingTime} was cancelled`
+              : `Your appointment on ${bookingTime} is completed`;
+
+          const messageId = await messaging.send({
+            token: user.fcmToken,
+
+            data: {
+              title,
+              body,
+              appointmentId: updatedAppointment._id.toString(),
+              status: finalStatus,
+              bookingTime,
+              type: "APPOINTMENT_STATUS",
+              url: "/pages/bookingHistory",
+            },
+          });
+
+          console.log("FCM SUCCESS:", messageId);
+        } else {
+          console.log("FCM ERROR: User FCM token not found");
+        }
+      }
+    } catch (err) {
+      console.error("FCM ERROR:", err.code, err.message);
     }
-
-    const bookingTime = formatDateTime(
-      updatedAppointment.date,
-      updatedAppointment.time
-    );
-
-    const title =
-      finalStatus === "cancelled"
-        ? "❌ Appointment Cancelled"
-        : "✅ Appointment Completed";
-
-    const body =
-      finalStatus === "cancelled"
-        ? `Your appointment on ${bookingTime} was cancelled`
-        : `Your appointment on ${bookingTime} is completed`;
-
-    await admin.messaging().send({
-      token: user.fcmToken,
-
-      // ✅ DATA ONLY (notification REMOVED)
-      data: {
-        title,
-        body,
-        appointmentId: updatedAppointment._id.toString(),
-        status: finalStatus,
-        bookingTime,
-        type: "APPOINTMENT_STATUS",
-        url: "/pages/bookingHistory",
-      },
-    });
-
-    // console.log("🔔 User notified (DATA-only)");
-  }
-} catch (err) {
-  // console.error("❌ User notification failed:", err.message);
-}
-
-
-
 
     // 🔥 Update in Firebase (if firebaseId provided)
     if (firebaseId) {
@@ -325,7 +316,7 @@ try {
           updatedAt: updatedAppointment.updatedAt,
         },
       },
-      { status: 200, headers: corsHeaders }
+      { status: 200, headers: corsHeaders },
     );
   } catch (error) {
     // console.error("Error updating appointment:", error);
@@ -335,8 +326,7 @@ try {
         message: "Failed to update appointment.",
         details: error.message,
       },
-      { status: 500, headers: corsHeaders }
+      { status: 500, headers: corsHeaders },
     );
   }
 }
- 
