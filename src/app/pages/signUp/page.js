@@ -446,6 +446,8 @@ export default function SignupPage() {
     }
   }, []);
 
+  
+
   // ── Auto-select random avatar on mount ───────────────────────────────────
   useEffect(() => {
     const randomAvatar = AVATARS[Math.floor(Math.random() * AVATARS.length)];

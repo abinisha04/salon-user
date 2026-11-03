@@ -375,7 +375,7 @@ export default function BookingSummaryPage() {
       setBookingStatus("success");
 
       setTimeout(() => {
-        router.push("/pages/newUser");
+        router.push("/pages/bookingHistory");
       }, 2000);
     } catch (error) {
       // console.error("Booking error:", error);
