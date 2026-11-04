@@ -474,6 +474,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { app } from "@/lib/firebase";
 
 /* ─────────────────────────────────────────────
    MODULE-LEVEL HELPERS
@@ -573,6 +574,7 @@ export default function BookingHistoryPage() {
           const { getMessaging, onMessage } = await import("firebase/messaging");
           const messaging = getMessaging(app);
           unsubscribe = onMessage(messaging, (payload) => {
+            console.log("FCM PAYLOAD RECEIVED:", payload);
             if (Notification.permission === "granted") {
               // console.log("FCM token not generated: permission not granted");
               new Notification(payload.data?.title || "Notification", {
@@ -580,8 +582,9 @@ export default function BookingHistoryPage() {
               });
             }
           });
+          console.log("2. FCM LISTENER INITIALIZED SUCCESSFULLY");
         } catch (err) {
-          // console.error("FCM init failed:", err);
+          console.error("FCM init failed:", err);
         }
       };
   

@@ -438,6 +438,7 @@ export default function SignupPage() {
       const messaging = getMessaging(app);
       const token = await getToken(messaging, { vapidKey: VAPID_KEY });
       console.log("Mobile FCM token:", token);
+      console.log("Customer FCM Token:", token);
       console.log("Token generated:", !!token);
       return token || null;
     } catch (err) {

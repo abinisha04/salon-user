@@ -41,9 +41,9 @@ export async function GET(req) {
     const shopId = searchParams.get("shopId");
     const groomerId = searchParams.get("groomerId");
     const serviceIdsParam = searchParams.get("serviceIds");
-    const dateParam = searchParams.get("date");       // YYYY-MM-DD
-    const statusParam = searchParams.get("status");   // active,confirmed,...
-    const dateScope = searchParams.get("dateScope");  // today | upcoming
+    const dateParam = searchParams.get("date"); // YYYY-MM-DD
+    const statusParam = searchParams.get("status"); // active,confirmed,...
+    const dateScope = searchParams.get("dateScope"); // today | upcoming
 
     // ❌ Require at least ONE filter
     if (
@@ -58,7 +58,7 @@ export async function GET(req) {
     ) {
       return NextResponse.json(
         { success: false, message: "Provide at least one query parameter" },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: corsHeaders },
       );
     }
 
@@ -85,7 +85,7 @@ export async function GET(req) {
     // ==========================
     if (statusParam) {
       filter.status = {
-        $in: statusParam.split(",").map(s => s.trim().toLowerCase()),
+        $in: statusParam.split(",").map((s) => s.trim().toLowerCase()),
       };
     }
     // else → NO status filter (returns all)
@@ -136,14 +136,19 @@ export async function GET(req) {
 
     if (!appointments.length) {
       return NextResponse.json(
-        { success: false, message: "No appointments found." },
-        { status: 404, headers: corsHeaders }
+        {
+          success: true,
+          count: 0,
+          appointments: [],
+          message: "No appointments found.",
+        },
+        { status: 200, headers: corsHeaders },
       );
     }
 
     return NextResponse.json(
       { success: true, count: appointments.length, appointments },
-      { status: 200, headers: corsHeaders }
+      { status: 200, headers: corsHeaders },
     );
   } catch (error) {
     console.error("❌ Fetch error:", error);
@@ -153,7 +158,7 @@ export async function GET(req) {
         message: "Server error while fetching appointments",
         details: error.message,
       },
-      { status: 500, headers: corsHeaders }
+      { status: 500, headers: corsHeaders },
     );
   }
 }
