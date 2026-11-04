@@ -383,45 +383,45 @@ export default function SignupPage() {
   }, [router]);
 
   // ── Register FCM service worker ──────────────────────────────────────────
-  useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker
-      .register("/firebase-messaging-sw.js")
-      .catch((err) => console.error("SW registration failed:", err));
-    // ✅ Removed console.log in production — errors only
-  }, []);
+  // useEffect(() => {
+  //   if (!("serviceWorker" in navigator)) return;
+  //   navigator.serviceWorker
+  //     .register("/firebase-messaging-sw.js")
+  //     .catch((err) => console.error("SW registration failed:", err));
+  //   // ✅ Removed console.log in production — errors only
+  // }, []);
 
   // ── Listen for foreground FCM notifications ──────────────────────────────
   // ✅ FIX: Fully dynamic import — firebase/messaging stays OUT of initial bundle
-  useEffect(() => {
-    if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
+  // useEffect(() => {
+  //   if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
 
-    let unsubscribe = null;
+  //   let unsubscribe = null;
 
-    const initFCM = async () => {
-      try {
-        const { getMessaging, onMessage } = await import("firebase/messaging");
-        const messaging = getMessaging(app);
-        unsubscribe = onMessage(messaging, (payload) => {
-          if (Notification.permission === "granted") {
-            // console.log("FCM token not generated: permission not granted");
-            new Notification(payload.data?.title || "Notification", {
-              body: payload.data?.body || "",
-            });
-          }
-        });
-      } catch (err) {
-        // console.error("FCM init failed:", err);
-      }
-    };
+  //   const initFCM = async () => {
+  //     try {
+  //       const { getMessaging, onMessage } = await import("firebase/messaging");
+  //       const messaging = getMessaging(app);
+  //       unsubscribe = onMessage(messaging, (payload) => {
+  //         if (Notification.permission === "granted") {
+  //           // console.log("FCM token not generated: permission not granted");
+  //           new Notification(payload.data?.title || "Notification", {
+  //             body: payload.data?.body || "",
+  //           });
+  //         }
+  //       });
+  //     } catch (err) {
+  //       // console.error("FCM init failed:", err);
+  //     }
+  //   };
 
-    initFCM();
+  //   initFCM();
 
-    // ✅ FIX: Cleanup listener on unmount to prevent memory leak
-    return () => {
-      if (typeof unsubscribe === "function") unsubscribe();
-    };
-  }, []);
+  //   // ✅ FIX: Cleanup listener on unmount to prevent memory leak
+  //   return () => {
+  //     if (typeof unsubscribe === "function") unsubscribe();
+  //   };
+  // }, []);
 
   // ── Get FCM token (fully dynamic — no static firebase/messaging import) ──
   // ✅ FIX: Removed static top-level `import { getMessaging, getToken }` —
