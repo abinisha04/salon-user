@@ -434,6 +434,12 @@ export default function SignupPage() {
       // console.log("Notification permission:", permission);
       if (permission !== "granted") return null;
 
+      const registration = await navigator.serviceWorker.register(
+        "/firebase-messaging-sw.js",
+      );
+
+      await navigator.serviceWorker.ready;
+
       const { getMessaging, getToken } = await import("firebase/messaging");
       const messaging = getMessaging(app);
       const token = await getToken(messaging, { vapidKey: VAPID_KEY });
@@ -446,8 +452,6 @@ export default function SignupPage() {
       return null; // ✅ Non-blocking — signup continues even if FCM fails
     }
   }, []);
-
-  
 
   // ── Auto-select random avatar on mount ───────────────────────────────────
   useEffect(() => {

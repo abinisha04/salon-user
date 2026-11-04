@@ -100,11 +100,6 @@
 //   }
 // }
 
-
-
-
-
-
 // src/app/api/proxy/route.js
 // ✅ Runs on SERVER — AUTH_KEY is never exposed to browser
 
@@ -120,6 +115,7 @@ const ALLOWED_ENDPOINTS = [
   "postUser",
   "putUser",
   "getUser",
+  "updateFcmToken",
   "getGroomer",
   "getService",
   "getLeave",
@@ -128,7 +124,7 @@ const ALLOWED_ENDPOINTS = [
   "getShopFeedback",
   "putRating",
   "sendOtp",
-  "verifyOtop"
+  "verifyOtop",
 ];
 
 // ✅ Reusable endpoint validator
@@ -136,7 +132,7 @@ function validateEndpoint(endpoint) {
   if (!endpoint || !ALLOWED_ENDPOINTS.includes(endpoint)) {
     return NextResponse.json(
       { success: false, error: "Invalid endpoint" },
-      { status: 400 }
+      { status: 400 },
     );
   }
   return null;
@@ -176,7 +172,7 @@ export async function GET(request) {
         // ✅ Development-la மட்டும் details காட்டும்
         ...(process.env.NODE_ENV !== "production" && { details: err.message }),
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -200,9 +196,9 @@ export async function POST(request) {
       headers: {
         "Content-Type": "application/json",
         "x-auth-key": AUTH_KEY,
+        cookie: request.headers.get("cookie") || "",
       },
       body: JSON.stringify(payload),
-      // signal: AbortSignal.timeout(60000),
     });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
@@ -214,7 +210,7 @@ export async function POST(request) {
         error: "Request failed",
         ...(process.env.NODE_ENV !== "production" && { details: err.message }),
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -252,14 +248,7 @@ export async function PUT(request) {
         error: "Request failed",
         ...(process.env.NODE_ENV !== "production" && { details: err.message }),
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-
-
-
-
-
-
-

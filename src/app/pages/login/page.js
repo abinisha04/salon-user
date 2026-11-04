@@ -3,6 +3,57 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { app } from "@/lib/firebase";
+
+const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
+
+async function getCurrentDeviceFcmToken() {
+  try {
+    if (
+      typeof window === "undefined" ||
+      !("serviceWorker" in navigator) ||
+      !("Notification" in window)
+    ) {
+      return null;
+    }
+
+    if (!VAPID_KEY) {
+      console.error("Firebase VAPID key is missing.");
+      return null;
+    }
+
+    let permission = Notification.permission;
+
+    if (permission === "default") {
+      permission = await Notification.requestPermission();
+    }
+
+    if (permission !== "granted") {
+      return null;
+    }
+
+    const registration = await navigator.serviceWorker.register(
+      "/firebase-messaging-sw.js",
+    );
+
+    await navigator.serviceWorker.ready;
+
+    const { getMessaging, getToken } = await import("firebase/messaging");
+
+    const messaging = getMessaging(app);
+
+    const token = await getToken(messaging, {
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: registration,
+    });
+
+    return token || null;
+  } catch (error) {
+    console.error("FCM token generation failed:", error);
+    return null;
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -86,18 +137,41 @@ export default function LoginPage() {
       }
 
       if (result.isNewUser === false && result.user) {
-        // Existing user
         localStorage.setItem("user", JSON.stringify(result.user));
-
         sessionStorage.removeItem("verifiedEmail");
 
+        try {
+          const fcmToken = await getCurrentDeviceFcmToken();
+
+          if (fcmToken) {
+            const updateResponse = await fetch("/api/proxy", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                endpoint: "updateFcmToken",
+                fcmToken,
+              }),
+            });
+
+            const updateResult = await updateResponse.json();
+
+            if (!updateResponse.ok || !updateResult.success) {
+              console.error("FCM update failed:", updateResult.message);
+            } else {
+              console.log("Latest device FCM token updated.");
+            }
+          }
+        } catch (error) {
+          console.error("FCM update request failed:", error);
+        }
+
+        // Keep your existing navigation
         router.push("/pages/newUser");
       } else if (result.isNewUser === true) {
-        // New user
         localStorage.removeItem("user");
-
         sessionStorage.setItem("verifiedEmail", normalizedEmail);
-
         router.push("/pages/signUp");
       }
     } catch (error) {

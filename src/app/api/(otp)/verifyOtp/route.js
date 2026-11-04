@@ -2,6 +2,9 @@ import { createHash, timingSafeEqual } from "crypto";
 import connectDB from "@/lib/db";
 import User from "@/models/user/schema";
 
+import { NextResponse } from "next/server";
+import { generateToken } from "@/lib/jwt";
+
 const store = globalThis;
 
 export async function POST(request) {
@@ -16,7 +19,7 @@ export async function POST(request) {
     ) {
       return Response.json(
         { message: "Enter a valid email and 6-digit OTP." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -28,7 +31,7 @@ export async function POST(request) {
     if (!savedOtp) {
       return Response.json(
         { message: "OTP not found. Please request a new OTP." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -38,24 +41,22 @@ export async function POST(request) {
 
       return Response.json(
         { message: "OTP expired. Please request a new OTP." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     // 4. Compare OTP hash
-    const enteredHash = createHash("sha256")
-      .update(otp)
-      .digest("hex");
+    const enteredHash = createHash("sha256").update(otp).digest("hex");
 
     const isValid = timingSafeEqual(
       Buffer.from(enteredHash, "hex"),
-      Buffer.from(savedOtp.otpHash, "hex")
+      Buffer.from(savedOtp.otpHash, "hex"),
     );
 
     if (!isValid) {
       return Response.json(
         { message: "Incorrect OTP. Please try again." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -70,14 +71,38 @@ export async function POST(request) {
       email: normalizedEmail,
     }).lean();
 
-    // 8. Existing user
     if (existingUser) {
-      return Response.json({
+      const loginToken = generateToken({
+        userId: existingUser._id,
+        shopId: existingUser.shopId,
+        email: existingUser.email,
+      });
+
+      await User.updateOne(
+        { _id: existingUser._id },
+        { $set: { token: loginToken } },
+      );
+
+      existingUser.token = loginToken;
+
+      const response = NextResponse.json({
         success: true,
         isNewUser: false,
         user: existingUser,
         message: "OTP verified successfully.",
       });
+
+      response.cookies.set({
+        name: "userToken",
+        value: loginToken,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 90,
+      });
+
+      return response;
     }
 
     // 9. New user
@@ -86,13 +111,12 @@ export async function POST(request) {
       isNewUser: true,
       message: "OTP verified. Please complete your signup.",
     });
-
   } catch (error) {
     // console.error("Verify OTP error:", error);
 
     return Response.json(
       { message: "Something went wrong. Please try again." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
