@@ -193,7 +193,7 @@ export default function LoginPage() {
                 </button>
               </div>
 
-              <div className="flex justify-between gap-2 sm:gap-3">
+              <div className="flex justify-between gap-1.5 sm:gap-3">
                 {Array.from({ length: 6 }).map((_, index) => (
                   <input
                     key={index}
@@ -260,7 +260,7 @@ export default function LoginPage() {
                           ?.focus();
                       }
                     }}
-                    className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl border border-gray-300 bg-gray-50 text-center text-xl font-bold text-gray-900 outline-none transition focus:bg-white focus:ring-2 focus:ring-[#ffffff]/20"
+                    className="h-11 min-w-0 flex-1 max-w-14 rounded-xl border border-gray-300 bg-gray-50 text-center text-lg font-bold text-gray-900 outline-none transition focus:bg-white focus:ring-2 focus:ring-[#ffffff]/20 sm:h-14 sm:text-xl"
                   />
                 ))}
               </div>
