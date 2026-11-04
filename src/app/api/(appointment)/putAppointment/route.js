@@ -138,6 +138,7 @@
 
 
 
+
 import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc, Timestamp } from "firebase/firestore";
@@ -145,8 +146,9 @@ import connectDB from "@/lib/db";
 import Appointment from "@/models/appointment/schema";
 import { checkAuthKey } from "@/lib/authkey";
 
-
 import { messaging } from "@/lib/firebaseAdmin";
+import { adminDb } from "@/lib/firebaseAdmin";
+import { FieldValue } from "firebase-admin/firestore";
 import User from "@/models/user/schema";
 
 const corsHeaders = {
@@ -181,25 +183,24 @@ export async function PUT(req) {
       price,
       status,
     } = body;
-//Notification date
+    //Notification date
     const formatDateTime = (date, time) => {
-  const d = new Date(date);
+      const d = new Date(date);
 
-  const formattedDate = d.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+      const formattedDate = d.toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
 
-  return `${formattedDate} at ${time}`;
-};
+      return `${formattedDate} at ${time}`;
+    };
 
-    
     // 🧾 Validate appointmentId
     if (!appointmentId) {
       return NextResponse.json(
         { success: false, message: "Missing appointmentId." },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: corsHeaders },
       );
     }
 
@@ -231,63 +232,94 @@ export async function PUT(req) {
           updatedAt: new Date(),
         },
       },
-      { new: true } // return updated document
+      { new: true }, // return updated document
     );
 
     if (!updatedAppointment) {
       return NextResponse.json(
         { success: false, message: "Appointment not found." },
-        { status: 404, headers: corsHeaders }
+        { status: 404, headers: corsHeaders },
       );
     }
-    // 🔔 SEND PUSH NOTIFICATION TO USER (ON CANCEL / COMPLETE)
-// 🔔 SEND PUSH NOTIFICATION TO USER
-try {
-  if (finalStatus === "cancelled" || finalStatus === "completed") {
-    const user = await User.findById(updatedAppointment.userId).select("fcmToken");
 
-    if (!user?.fcmToken) {
-      // console.log("❌ User FCM token not found");
-      return;
+    try {
+      await adminDb
+        .collection("appointmentStatusUpdates")
+        .doc(updatedAppointment._id.toString())
+        .set(
+          {
+            appointmentId: updatedAppointment._id.toString(),
+            shopId: updatedAppointment.shopId.toString(),
+            userId: updatedAppointment.userId.toString(),
+            status: updatedAppointment.status,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+    } catch (error) {
+      // console.error("Firestore status sync failed:", error);
     }
+    // 🔔 SEND PUSH NOTIFICATION TO USER (ON CANCEL / COMPLETE)
+    
+    // 🔔 SEND PUSH NOTIFICATION TO USER
+    try {
+      if (
+        ["confirmed", "cancelled", "completed"].includes(finalStatus)
+      ) {
+        // 1. Get customer FCM token
+        const user = await User.findById(
+          updatedAppointment.userId
+        ).select("fcmToken");
 
-    const bookingTime = formatDateTime(
-      updatedAppointment.date,
-      updatedAppointment.time
-    );
+        const customerToken = user?.fcmToken;
 
-    const title =
-      finalStatus === "cancelled"
-        ? "❌ Appointment Cancelled"
-        : "✅ Appointment Completed";
+        if (!customerToken) {
+          // console.log("Customer FCM token not found");
+        } else {
+          // 2. Format appointment date and time
+          const bookingTime = formatDateTime(
+            updatedAppointment.date,
+            updatedAppointment.time
+          );
 
-    const body =
-      finalStatus === "cancelled"
-        ? `Your appointment on ${bookingTime} was cancelled`
-        : `Your appointment on ${bookingTime} is completed`;
+          // 3. Prepare notification content
+          let title = "Appointment Update";
+          let body = "";
 
-    await messaging().send({
-      token: user.fcmToken,
+          if (finalStatus === "confirmed") {
+            title = "✅ Appointment Confirmed";
+            body = `Your appointment on ${bookingTime} has been confirmed`;
+          } else if (finalStatus === "cancelled") {
+            title = "❌ Appointment Cancelled";
+            body = `Your appointment on ${bookingTime} was cancelled`;
+          } else if (finalStatus === "completed") {
+            title = "✅ Appointment Completed";
+            body = `Your appointment on ${bookingTime} is completed`;
+          }
 
-      // ✅ DATA ONLY (notification REMOVED)
-      data: {
-        title,
-        body,
-        appointmentId: updatedAppointment._id.toString(),
-        status: finalStatus,
-        bookingTime,
-        type: "APPOINTMENT_STATUS",
-        url: "/pages/bookingHistory",
-      },
-    });
+          // 4. Send data-only FCM notification
+          const response = await messaging.send({
+            token: customerToken,
+            data: {
+              title,
+              body,
+              appointmentId: updatedAppointment._id.toString(),
+              status: finalStatus,
+              bookingTime,
+              type: "APPOINTMENT_STATUS",
+              url: "/pages/bookingHistory",
+            },
+          });
 
-    // console.log("🔔 User notified (DATA-only)");
-  }
-} catch (err) {
-  // console.error("❌ User notification failed:", err.message);
-}
-
-
+          // console.log("🔔 Customer notification sent:", response);
+        }
+      }
+    } catch (notificationError) {
+      // console.error(
+      //   "❌ Customer notification failed:",
+      //   notificationError.message
+      // );
+    }
 
 
     // 🔥 Update in Firebase (if firebaseId provided)
@@ -325,7 +357,7 @@ try {
           updatedAt: updatedAppointment.updatedAt,
         },
       },
-      { status: 200, headers: corsHeaders }
+      { status: 200, headers: corsHeaders },
     );
   } catch (error) {
     // console.error("Error updating appointment:", error);
@@ -335,8 +367,7 @@ try {
         message: "Failed to update appointment.",
         details: error.message,
       },
-      { status: 500, headers: corsHeaders }
+      { status: 500, headers: corsHeaders },
     );
   }
 }
- 
