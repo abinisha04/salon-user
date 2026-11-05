@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Star, ChevronLeft, ChevronRight, ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -12,10 +12,14 @@ export default function FeedbackPage() {
 
   const [data, setData] = useState(null);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // only for first load
+  const [isUpdating, setIsUpdating] = useState(false); // for filter/page changes
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [sortBy, setSortBy] = useState("newest");
+
+  // Simple cache so switching back to a previous filter is instant
+  const cacheRef = useRef({});
 
   useEffect(() => {
     if (!shopId) {
@@ -24,16 +28,31 @@ export default function FeedbackPage() {
       return;
     }
 
+    const cacheKey = `${shopId}-${page}-${sortBy}`;
+
+    // If we already have this exact data, use it instantly
+    if (cacheRef.current[cacheKey]) {
+      setData(cacheRef.current[cacheKey]);
+      setLoading(false);
+      setIsUpdating(false);
+      return;
+    }
+
     const fetchFeedback = async () => {
       try {
-        setLoading(true);
+        // Only full loading on first load
+        if (!data) {
+          setLoading(true);
+        } else {
+          setIsUpdating(true);
+        }
         setError("");
 
         const response = await fetch(
-          `/api/proxy?endpoint=getShopFeedback&shopId=${encodeURIComponent(shopId)}&page=${page}&limit=10&sortBy=${sortBy}`,
-          {
-            cache: "no-store",
-          },
+          `/api/proxy?endpoint=getShopFeedback&shopId=${encodeURIComponent(
+            shopId,
+          )}&page=${page}&limit=10&sortBy=${sortBy}`,
+          { cache: "no-store" },
         );
 
         const result = await response.json();
@@ -42,11 +61,14 @@ export default function FeedbackPage() {
           throw new Error(result.message || "Unable to load reviews");
         }
 
+        // Save to cache
+        cacheRef.current[cacheKey] = result;
         setData(result);
       } catch (err) {
         setError(err.message || "Something went wrong");
       } finally {
         setLoading(false);
+        setIsUpdating(false);
       }
     };
 
@@ -86,6 +108,12 @@ export default function FeedbackPage() {
       <div className="min-h-screen flex items-center justify-center">
         Loading reviews...
       </div>
+    );
+  }
+
+  {
+    isUpdating && (
+      <p className="text-sm text-gray-500 mb-4">Updating reviews...</p>
     );
   }
 

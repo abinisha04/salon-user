@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Star, ArrowLeft, Pencil, Save, X } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { Star, ArrowLeft, Pencil, Save, X, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-const SHOP_ID = "6ae7c9ff38c6f355726abd90";
+const SHOP_ID = process.env.NEXT_PUBLIC_SHOP_ID || "6ae7c9ff38c6f355726abd90";
 
 export default function MyFeedbackPage() {
   const router = useRouter();
@@ -14,10 +14,11 @@ export default function MyFeedbackPage() {
   const [rating, setRating] = useState(0);
   const [feedback, setFeedback] = useState("");
   const [editing, setEditing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // only for the content area
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // 1. Instantly read user + try cached review
   useEffect(() => {
     const stored = localStorage.getItem("user");
 
@@ -37,17 +38,29 @@ export default function MyFeedbackPage() {
       }
 
       setUserId(id);
+
+      // ✅ Instant path: show last known review while fetching fresh data
+      const cached = sessionStorage.getItem(`my-feedback-${id}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          setReview(parsed);
+          setRating(parsed.rating || 0);
+          setFeedback(parsed.feedback || "");
+          setLoading(false); // show content immediately
+        } catch {}
+      }
+
+      // Always fetch fresh data in background
       fetchMyFeedback(id);
-      // console.log("User ID:", id);
     } catch {
       setError("Unable to read user information.");
       setLoading(false);
     }
   }, [router]);
 
-  const fetchMyFeedback = async (id) => {
+  const fetchMyFeedback = useCallback(async (id) => {
     try {
-      setLoading(true);
       setError("");
 
       const response = await fetch(
@@ -57,8 +70,6 @@ export default function MyFeedbackPage() {
 
       const result = await response.json();
 
-      // console.log("GET API Full Response:", result);
-
       if (!response.ok || !result.success) {
         throw new Error(result.message || "Unable to load feedback");
       }
@@ -67,18 +78,21 @@ export default function MyFeedbackPage() {
 
       setReview(myReview);
 
-      // console.log(" Feedback Response:", myReview);
-
       if (myReview) {
         setRating(myReview.rating);
         setFeedback(myReview.feedback || "");
+
+        // ✅ Cache for next visit
+        sessionStorage.setItem(`my-feedback-${id}`, JSON.stringify(myReview));
+      } else {
+        sessionStorage.removeItem(`my-feedback-${id}`);
       }
     } catch (err) {
       setError(err.message || "Something went wrong");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const handleUpdate = async () => {
     if (rating < 1 || rating > 5) {
@@ -112,16 +126,18 @@ export default function MyFeedbackPage() {
 
       const result = await response.json();
 
-      // console.log("GET Feedback Response:", result);
-
       if (!response.ok || !result.success) {
         throw new Error(result.message || "Unable to update feedback");
       }
 
-      setReview(result.data);
-      setRating(result.data.rating);
-      setFeedback(result.data.feedback || "");
+      const updated = result.data;
+      setReview(updated);
+      setRating(updated.rating);
+      setFeedback(updated.feedback || "");
       setEditing(false);
+
+      // Update cache
+      sessionStorage.setItem(`my-feedback-${userId}`, JSON.stringify(updated));
 
       window.dispatchEvent(
         new CustomEvent("shop-feedback-updated", {
@@ -158,17 +174,10 @@ export default function MyFeedbackPage() {
     </div>
   );
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading your feedback...
-      </div>
-    );
-  }
-
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-24">
       <div className="max-w-2xl mx-auto">
+        {/* Header always visible instantly */}
         <button
           onClick={() => router.back()}
           className="flex items-center gap-2 mb-6 text-gray-700"
@@ -179,17 +188,23 @@ export default function MyFeedbackPage() {
 
         <section className="bg-white rounded-2xl shadow-sm p-6">
           <h1 className="text-2xl font-bold text-gray-900">My Feedback</h1>
-
           <p className="text-sm text-gray-500 mt-2">
             Your review for Zenth Salon
           </p>
 
           {error && <p className="text-sm text-red-500 mt-4">{error}</p>}
 
-          {!review ? (
+          {/* Content area */}
+          {loading ? (
+            <div className="mt-10 flex flex-col items-center justify-center py-12 text-gray-500">
+              <Loader2 className="w-6 h-6 animate-spin mb-3" />
+              <p className="text-sm">Loading your feedback...</p>
+            </div>
+          ) : !review ? (
             <div className="text-center py-10">
               <p className="text-gray-600">
-                You haven't submitted a review yet.
+                You haven&apos;t placed an order yet. Place your first order to
+                share your experience!
               </p>
             </div>
           ) : (
@@ -254,8 +269,17 @@ export default function MyFeedbackPage() {
                     disabled={saving}
                     className="flex items-center gap-2 px-5 py-2 rounded-lg bg-black text-white disabled:opacity-50"
                   >
-                    <Save size={17} />
-                    {saving ? "Saving..." : "Save Changes"}
+                    {saving ? (
+                      <>
+                        <Loader2 size={17} className="animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save size={17} />
+                        Save Changes
+                      </>
+                    )}
                   </button>
                 </div>
               )}

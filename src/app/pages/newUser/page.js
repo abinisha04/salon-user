@@ -404,13 +404,9 @@ export default function Newuser() {
       selectedServices.includes(s._id),
     );
 
-    // Clear old temporary data from previous flows
-    sessionStorage.removeItem("rescheduleBooking");
-    // Clear previous reschedule data
     sessionStorage.removeItem("rescheduleBooking");
     sessionStorage.removeItem("bookingSummary");
 
-    // Save current new booking data
     sessionStorage.setItem(
       "bookingData",
       JSON.stringify({
@@ -419,9 +415,33 @@ export default function Newuser() {
       }),
     );
 
+    // Prefetch shop + leaves in background
+    Promise.all([
+      fetch(`/api/proxy?endpoint=getShop&shopId=${SHOP_ID}`).then((r) =>
+        r.json(),
+      ),
+      fetch(`/api/proxy?endpoint=getLeave&shopId=${SHOP_ID}`).then((r) =>
+        r.json(),
+      ),
+    ])
+      .then(([shopJson, leaveJson]) => {
+        if (shopJson.success) {
+          sessionStorage.setItem(
+            "prefetchedShop",
+            JSON.stringify(shopJson.shops?.[0]),
+          );
+        }
+        if (leaveJson.success) {
+          sessionStorage.setItem(
+            "prefetchedLeaves",
+            JSON.stringify(leaveJson.leaves || []),
+          );
+        }
+      })
+      .catch(() => {});
+
     router.push("/pages/timeslot");
   }, [selectedGroomer, selectedServices, groomers, services, router]);
-
   if (isLoading) return <AppLoading />;
 
   const canContinue = selectedServices.length > 0 && !!selectedGroomer;

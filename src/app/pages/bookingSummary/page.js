@@ -281,11 +281,10 @@
 import { useEffect, useState, useCallback } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Scissors } from "lucide-react";
-import LottieLoader from "@/app/utils/loading";
+import { Scissors, Loader2 } from "lucide-react";
 import SuccessLottie from "@/app/utils/done";
 
-// ✅ Read user once at module level helper (avoids repeated JSON.parse on every render)
+// ✅ Read user once
 const getStoredUser = () => {
   if (typeof window === "undefined") return null;
   try {
@@ -295,7 +294,7 @@ const getStoredUser = () => {
   }
 };
 
-// ✅ Date formatting extracted to avoid repeated Date object creation in JSX
+// ✅ Date formatting extracted
 const formatDate = (date) => {
   const d = new Date(date);
   return {
@@ -312,25 +311,28 @@ export default function BookingSummaryPage() {
   const router = useRouter();
 
   const [data, setData] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [bookingStatus, setBookingStatus] = useState("idle");
+  const [bookingStatus, setBookingStatus] = useState("idle"); // idle | submitting | success
+
   useEffect(() => {
     const stored = sessionStorage.getItem("bookingSummary");
+
     if (!stored) {
       router.replace("/");
       return;
     }
-    setData(JSON.parse(stored));
+
+    try {
+      setData(JSON.parse(stored));
+    } catch {
+      sessionStorage.removeItem("bookingSummary");
+      router.replace("/");
+    }
   }, [router]);
 
-  // ✅ useCallback prevents recreation on every render
-
   const handleConfirmBooking = useCallback(async () => {
-    // Prevent duplicate booking requests
     if (bookingStatus !== "idle") return;
 
     const user = getStoredUser();
-
     if (!user?._id) {
       alert("Please login to continue");
       return;
@@ -361,42 +363,44 @@ export default function BookingSummaryPage() {
 
       const result = await res.json();
 
-      // Show success ONLY after confirmed API success
       if (!res.ok || !result.success) {
         setBookingStatus("idle");
         alert(result.message || "Booking failed");
         return;
       }
 
-      // Clear summary only after successful booking
+      // Clear only after real success
       sessionStorage.removeItem("bookingSummary");
 
-      // Now show success animation
+      // Show success animation
       setBookingStatus("success");
 
       setTimeout(() => {
         router.push("/pages/bookingHistory");
-      }, 2000);
+      }, 1800);
     } catch (error) {
-      // console.error("Booking error:", error);
       setBookingStatus("idle");
       alert("Something went wrong. Please try again.");
     }
   }, [data, router, bookingStatus]);
 
-  if (!data) return null;
-
-  if (bookingStatus === "submitting") {
-    return <LottieLoader />;
+  // Still loading session data
+  if (!data) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <p className="text-gray-500 text-sm">Loading summary...</p>
+      </div>
+    );
   }
 
+  // Success state
   if (bookingStatus === "success") {
     return <SuccessLottie />;
   }
 
   const { shop, groomer, services, date, time, totalPrice } = data;
-  // ✅ Compute formatted date once, not three times in JSX
   const formattedDate = date ? formatDate(date) : null;
+  const isSubmitting = bookingStatus === "submitting";
 
   return (
     <div className="min-h-screen bg-white p-5 pb-28">
@@ -484,14 +488,21 @@ export default function BookingSummaryPage() {
         </div>
       </div>
 
-      {/* Confirm */}
+      {/* Confirm Button */}
       <div className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 p-4">
         <button
           onClick={handleConfirmBooking}
-          disabled={bookingStatus !== "idle"}
-          className="w-full py-3 rounded-xl font-semibold bg-black text-green-500 transition disabled:opacity-50"
+          disabled={isSubmitting}
+          className="w-full py-3 rounded-xl font-semibold bg-black text-green-500 transition disabled:opacity-70 flex items-center justify-center gap-2"
         >
-          {bookingStatus === "submitting" ? "Booking..." : "Confirm Booking"}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Booking...
+            </>
+          ) : (
+            "Confirm Booking"
+          )}
         </button>
       </div>
     </div>

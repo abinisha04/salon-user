@@ -115,6 +115,10 @@ export default function LoginPage() {
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
 
+    setLoading(true);
+    setError("");
+    setMessage("");
+
     try {
       const normalizedEmail = email.trim().toLowerCase();
 
@@ -133,6 +137,7 @@ export default function LoginPage() {
 
       if (!res.ok) {
         setError(result.message || "OTP verification failed.");
+        setLoading(false);
         return;
       }
 
@@ -140,43 +145,44 @@ export default function LoginPage() {
         localStorage.setItem("user", JSON.stringify(result.user));
         sessionStorage.removeItem("verifiedEmail");
 
-        try {
-          const fcmToken = await getCurrentDeviceFcmToken();
+        // Navigate immediately
+        router.push("/pages/newUser");
 
-          if (fcmToken) {
-            const updateResponse = await fetch("/api/proxy", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                endpoint: "updateFcmToken",
-                fcmToken,
-              }),
-            });
-
-            const updateResult = await updateResponse.json();
-
-            if (!updateResponse.ok || !updateResult.success) {
+        // Run FCM in background (same logic, not awaited)
+        getCurrentDeviceFcmToken()
+          .then((fcmToken) => {
+            if (fcmToken) {
+              return fetch("/api/proxy", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  endpoint: "updateFcmToken",
+                  fcmToken,
+                }),
+              }).then((updateResponse) => updateResponse.json());
+            }
+          })
+          .then((updateResult) => {
+            if (updateResult && !updateResult.success) {
               console.error("FCM update failed:", updateResult.message);
-            } else {
+            } else if (updateResult) {
               console.log("Latest device FCM token updated.");
             }
-          }
-        } catch (error) {
-          console.error("FCM update request failed:", error);
-        }
-
-        // Keep your existing navigation
-        router.push("/pages/newUser");
+          })
+          .catch((error) => {
+            console.error("FCM update request failed:", error);
+          });
       } else if (result.isNewUser === true) {
         localStorage.removeItem("user");
         sessionStorage.setItem("verifiedEmail", normalizedEmail);
         router.push("/pages/signUp");
       }
     } catch (error) {
-      // console.error("OTP verification error:", error);
       setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 

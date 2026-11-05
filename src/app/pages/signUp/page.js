@@ -531,9 +531,7 @@ export default function SignupPage() {
     setIsSubmitting(true);
 
     try {
-      // ✅ FCM token is non-blocking — if it fails, signup still proceeds
-      const fcmToken = await getSignupFCMToken();
-
+      // Navigate + create user first
       const res = await fetch("/api/proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -541,38 +539,48 @@ export default function SignupPage() {
           endpoint: "postUser",
           ...form,
           shopId: SHOP_ID,
-          fcmToken,
+          fcmToken: null, // send null first, update later
         }),
       });
 
-      // ✅ FIX: Guard against non-OK HTTP responses (500, 404, etc.)
       if (!res.ok) {
         throw new Error(`Server error: ${res.status}`);
       }
 
       const result = await res.json();
 
-      // console.log("Signup status:", res.status);
-      // console.log("Signup response:", result);
-
-      // ✅ FIX: Defensive check — API may return success:false without throwing
       if (!result?.user) {
         message.error(result?.error || "Signup failed. Please try again.");
         setIsSubmitting(false);
         return;
       }
 
-      // ✅ FIX: Safe localStorage write (crash-safe for private/restricted browsers)
       const saved = safeStorage.set("user", result.user);
       if (!saved) {
-        // Still proceed — session will work even if localStorage failed
-        // console.warn("localStorage unavailable — user data not persisted");
+        // still continue
       }
 
       message.success("Profile created 🎉");
       router.replace("/pages/newUser");
+
+      // Run FCM in background (same logic, not awaited)
+      getSignupFCMToken()
+        .then((fcmToken) => {
+          if (fcmToken) {
+            return fetch("/api/proxy", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                endpoint: "updateFcmToken",
+                fcmToken,
+              }),
+            });
+          }
+        })
+        .catch((err) => {
+          console.error("FCM token error:", err);
+        });
     } catch (err) {
-      // console.error("Signup error:", err);
       message.error(
         "Something went wrong. Please check your connection and try again.",
       );
