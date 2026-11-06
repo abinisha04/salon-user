@@ -20,79 +20,83 @@ export default function MyFeedbackPage() {
 
   // 1. Instantly read user + try cached review
   useEffect(() => {
-    const stored = localStorage.getItem("user");
+    const loadFeedback = async () => {
+      const stored = localStorage.getItem("user");
 
-    if (!stored) {
-      router.replace("/");
-      return;
-    }
+      if (!stored) {
+        router.replace("/");
+        return;
+      }
 
-    try {
-      const user = JSON.parse(stored);
-      const id = user._id || user.id;
+      let id;
 
-      if (!id) {
-        setError("User information is missing.");
+      try {
+        const user = JSON.parse(stored);
+        id = user._id || user.id;
+
+        if (!id) {
+          setError("User information is missing.");
+          setLoading(false);
+          return;
+        }
+
+        setUserId(id);
+
+        // Show cached feedback immediately
+        const cached = sessionStorage.getItem(`my-feedback-${id}`);
+
+        if (cached) {
+          const parsed = JSON.parse(cached);
+
+          setReview(parsed);
+          setRating(parsed.rating || 0);
+          setFeedback(parsed.feedback || "");
+          setLoading(false);
+        }
+      } catch {
+        setError("Unable to read user information.");
         setLoading(false);
         return;
       }
 
-      setUserId(id);
+      // Fetch the latest feedback
+      try {
+        const response = await fetch(
+          `/api/proxy?endpoint=getRating&shopId=${SHOP_ID}&userId=${id}`,
+          { cache: "no-store" },
+        );
 
-      // ✅ Instant path: show last known review while fetching fresh data
-      const cached = sessionStorage.getItem(`my-feedback-${id}`);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          setReview(parsed);
-          setRating(parsed.rating || 0);
-          setFeedback(parsed.feedback || "");
-          setLoading(false); // show content immediately
-        } catch {}
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.message || "Unable to load feedback");
+        }
+
+        const myReview = result.data || null;
+
+        setReview(myReview);
+
+        if (myReview) {
+          setRating(myReview.rating || 0);
+          setFeedback(myReview.feedback || "");
+
+          sessionStorage.setItem(`my-feedback-${id}`, JSON.stringify(myReview));
+        } else {
+          setRating(0);
+          setFeedback("");
+          sessionStorage.removeItem(`my-feedback-${id}`);
+        }
+
+        setError("");
+      } catch (error) {
+        setError(error.message || "Unable to load feedback");
+      } finally {
+        setLoading(false);
       }
+    };
 
-      // Always fetch fresh data in background
-      fetchMyFeedback(id);
-    } catch {
-      setError("Unable to read user information.");
-      setLoading(false);
-    }
+    loadFeedback();
   }, [router]);
-
-  const fetchMyFeedback = useCallback(async (id) => {
-    try {
-      setError("");
-
-      const response = await fetch(
-        `/api/proxy?endpoint=getRating&shopId=${SHOP_ID}&userId=${id}`,
-        { cache: "no-store" },
-      );
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || "Unable to load feedback");
-      }
-
-      const myReview = result.data || null;
-
-      setReview(myReview);
-
-      if (myReview) {
-        setRating(myReview.rating);
-        setFeedback(myReview.feedback || "");
-
-        // ✅ Cache for next visit
-        sessionStorage.setItem(`my-feedback-${id}`, JSON.stringify(myReview));
-      } else {
-        sessionStorage.removeItem(`my-feedback-${id}`);
-      }
-    } catch (err) {
-      setError(err.message || "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   const handleUpdate = async () => {
     if (rating < 1 || rating > 5) {

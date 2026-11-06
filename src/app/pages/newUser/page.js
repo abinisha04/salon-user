@@ -357,6 +357,40 @@ export default function Newuser() {
     fetchInitialData();
   }, []); // ✅ SHOP_ID is stable — no need in dep array
 
+  useEffect(() => {
+    const prefetchShopData = async () => {
+      try {
+        const [shopRes, leaveRes] = await Promise.all([
+          fetch(`/api/proxy?endpoint=getShop&shopId=${SHOP_ID}`),
+          fetch(`/api/proxy?endpoint=getLeave&shopId=${SHOP_ID}`),
+        ]);
+
+        const [shopJson, leaveJson] = await Promise.all([
+          shopRes.json(),
+          leaveRes.json(),
+        ]);
+
+        if (shopJson.success) {
+          sessionStorage.setItem(
+            "prefetchedShop",
+            JSON.stringify(shopJson.shops?.[0] || null),
+          );
+        }
+
+        if (leaveJson.success) {
+          sessionStorage.setItem(
+            "prefetchedLeaves",
+            JSON.stringify(leaveJson.leaves || []),
+          );
+        }
+      } catch (error) {
+        console.error("Shop prefetch error:", error);
+      }
+    };
+
+    prefetchShopData();
+  }, []);
+
   const filteredServices = useMemo(
     () =>
       searchQuery
@@ -415,34 +449,9 @@ export default function Newuser() {
       }),
     );
 
-    // Prefetch shop + leaves in background
-    Promise.all([
-      fetch(`/api/proxy?endpoint=getShop&shopId=${SHOP_ID}`).then((r) =>
-        r.json(),
-      ),
-      fetch(`/api/proxy?endpoint=getLeave&shopId=${SHOP_ID}`).then((r) =>
-        r.json(),
-      ),
-    ])
-      .then(([shopJson, leaveJson]) => {
-        if (shopJson.success) {
-          sessionStorage.setItem(
-            "prefetchedShop",
-            JSON.stringify(shopJson.shops?.[0]),
-          );
-        }
-        if (leaveJson.success) {
-          sessionStorage.setItem(
-            "prefetchedLeaves",
-            JSON.stringify(leaveJson.leaves || []),
-          );
-        }
-      })
-      .catch(() => {});
-
     router.push("/pages/timeslot");
   }, [selectedGroomer, selectedServices, groomers, services, router]);
-  // if (isLoading) return <AppLoading />;
+  if (isLoading) return <AppLoading />;
 
   const canContinue = selectedServices.length > 0 && !!selectedGroomer;
 

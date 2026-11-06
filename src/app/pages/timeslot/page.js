@@ -647,28 +647,56 @@ export default function TimeslotPage() {
 
     const fetchData = async () => {
       try {
+        // 1. Read prefetched data first
+        const cachedShop = sessionStorage.getItem("prefetchedShop");
+        const cachedLeaves = sessionStorage.getItem("prefetchedLeaves");
+
+        if (cachedShop && cachedLeaves) {
+          const shop = JSON.parse(cachedShop);
+          const leaveData = JSON.parse(cachedLeaves);
+
+          if (shop) {
+            setShopData(shop);
+          }
+
+          const todayUTC = normalizeUTC(today);
+
+          const validLeaves = leaveData.filter((leave) =>
+            normalizeUTC(leave.endDate).isSameOrAfter(todayUTC, "day"),
+          );
+
+          setLeaves(validLeaves);
+
+          setLoading(false);
+          return;
+        }
+
+        // 2. If cache is unavailable, fetch from API
         const [shopRes, leaveRes] = await Promise.all([
           fetch(`/api/proxy?endpoint=getShop&shopId=${SHOP_ID}`),
           fetch(`/api/proxy?endpoint=getLeave&shopId=${SHOP_ID}`),
         ]);
 
-        // ✅ Parse in parallel
         const [shopJson, leaveJson] = await Promise.all([
           shopRes.json(),
           leaveRes.json(),
         ]);
 
-        if (shopJson.success) setShopData(shopJson.shops?.[0]);
+        if (shopJson.success) {
+          setShopData(shopJson.shops?.[0]);
+        }
 
         if (leaveJson.success) {
           const todayUTC = normalizeUTC(today);
+
           const validLeaves = (leaveJson.leaves || []).filter((leave) =>
             normalizeUTC(leave.endDate).isSameOrAfter(todayUTC, "day"),
           );
+
           setLeaves(validLeaves);
         }
-      } catch (e) {
-        // console.error(e);
+      } catch (error) {
+        console.error("Timeslot data error:", error);
       } finally {
         setLoading(false);
       }
@@ -865,7 +893,7 @@ export default function TimeslotPage() {
     router,
   ]);
 
-  // if (loading || !today) return <LottieLoader />;
+  if (loading || !today) return <LottieLoader />;
 
   const canContinue = selectedDate && selectedTime && !isOnLeave;
 
