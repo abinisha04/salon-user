@@ -557,8 +557,10 @@ dayjs.extend(isSameOrAfter);
 dayjs.extend(isSameOrBefore);
 dayjs.extend(isBetween);
 
+// ✅ Module-level constants
 const SHOP_ID = process.env.NEXT_PUBLIC_SHOP_ID;
 
+// ✅ Extracted pure helpers — not recreated on render
 const toYMD = (date) => {
   const d = new Date(date);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -589,137 +591,103 @@ export default function TimeslotPage() {
   const [shopData, setShopData] = useState(null);
   const [leaves, setLeaves] = useState([]);
   const [bookedTimes, setBookedTimes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const [isReschedule, setIsReschedule] = useState(false);
   const [appointmentId, setAppointmentId] = useState(null);
-  const [isOpen, setIsOpen] = useState(false);
+  const [leaveType, setLeaveType] = useState(null);
 
-  // ✅ FIXED: never call new Date() during render
-  const [today, setToday] = useState(null);
-  const [shopReady, setShopReady] = useState(false);
-  const [bookedTimesReady, setBookedTimesReady] = useState(false);
+  const [today] = useState(() => new Date());
 
-  // 1. Set today AFTER mount (safe)
-  useEffect(() => {
-    setToday(new Date());
-  }, []);
-
-  // 2. Load session data (instant)
+  // Load session data
+  // Load session data
   useEffect(() => {
     const reschedule = sessionStorage.getItem("rescheduleBooking");
 
     if (reschedule) {
       const r = JSON.parse(reschedule);
+
       setIsReschedule(true);
       setAppointmentId(r.appointmentId);
       setGroomerData(r.groomer);
       setServiceData(r.services);
       setSelectedDate(new Date(r.date));
       setSelectedTime(r.time);
+
       return;
     }
 
+    // Normal new booking
     setIsReschedule(false);
     setAppointmentId(null);
+
+    // Important: Reset previous reschedule selections
     setSelectedDate(null);
     setSelectedTime(null);
 
     const booking = sessionStorage.getItem("bookingData");
+
     if (booking) {
       const { groomer, services } = JSON.parse(booking);
+
       setGroomerData(groomer);
       setServiceData(services);
     }
   }, []);
 
-  // 3. Prefer prefetched data → then fetch fresh
+  // Fetch shop + leaves
   useEffect(() => {
-    if (!groomerData) return;
+    if (!groomerData || !today) return;
 
-    let cancelled = false;
-
-    const loadShopAndLeaves = async () => {
-      setShopReady(false);
-
-      // Use prefetched data for an early display, if it exists.
-      // Fresh API data is still fetched below before enabling Continue.
-      const preShop = sessionStorage.getItem("prefetchedShop");
-      const preLeaves = sessionStorage.getItem("prefetchedLeaves");
-      const currentDayUTC = normalizeUTC(new Date());
-
-      if (preShop) {
-        try {
-          const parsedShop = JSON.parse(preShop);
-          if (!cancelled) setShopData(parsedShop);
-        } catch {
-          // Ignore invalid prefetched data and use the API response.
-        }
-      }
-
-      if (preLeaves) {
-        try {
-          const parsedLeaves = JSON.parse(preLeaves);
-          const validPrefetchedLeaves = (Array.isArray(parsedLeaves) ? parsedLeaves : []).filter(
-            (leave) =>
-              normalizeUTC(leave.endDate).isSameOrAfter(currentDayUTC, "day"),
-          );
-          if (!cancelled) setLeaves(validPrefetchedLeaves);
-        } catch {
-          // Ignore invalid prefetched data and use the API response.
-        }
-      }
-
-      // Refresh from the API so booking decisions use current shop/leave data.
+    const fetchData = async () => {
       try {
         const [shopRes, leaveRes] = await Promise.all([
           fetch(`/api/proxy?endpoint=getShop&shopId=${SHOP_ID}`),
           fetch(`/api/proxy?endpoint=getLeave&shopId=${SHOP_ID}`),
         ]);
 
+        // ✅ Parse in parallel
         const [shopJson, leaveJson] = await Promise.all([
           shopRes.json(),
           leaveRes.json(),
         ]);
 
-        if (cancelled) return;
-
-        if (shopJson.success) {
-          setShopData(shopJson.shops?.[0] ?? null);
-        }
+        if (shopJson.success) setShopData(shopJson.shops?.[0]);
 
         if (leaveJson.success) {
-          const todayUTC = normalizeUTC(new Date());
+          const todayUTC = normalizeUTC(today);
           const validLeaves = (leaveJson.leaves || []).filter((leave) =>
             normalizeUTC(leave.endDate).isSameOrAfter(todayUTC, "day"),
           );
           setLeaves(validLeaves);
         }
       } catch (e) {
-        // Keep valid prefetched data if the refresh request fails.
+        // console.error(e);
       } finally {
-        if (!cancelled) setShopReady(true);
+        setLoading(false);
       }
     };
 
-    loadShopAndLeaves();
+    fetchData();
+  }, [groomerData, today]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [groomerData]);
-
-  // Date list
+  // Date list: today + next 3 days — stable since no deps change
+  // Date list: today + next 3 days
   const dateList = useMemo(() => {
     if (!today) return [];
+
     const todayUTC = normalizeUTC(today);
+
     return Array.from({ length: 4 }, (_, i) => todayUTC.add(i, "day").toDate());
   }, [today]);
 
-  // Leave check (pure — no setState inside)
-  const { isOnLeave, leaveType } = useMemo(() => {
+  // Check leave status — also sets leaveType as side effect
+  const isOnLeave = useMemo(() => {
     if (!selectedDate || !leaves.length || !groomerData) {
-      return { isOnLeave: false, leaveType: null };
+      setLeaveType(null);
+      return false;
     }
 
     const selectedUTC = normalizeUTC(selectedDate);
@@ -734,83 +702,70 @@ export default function TimeslotPage() {
       if (!inRange) continue;
 
       if (leave.isShop) {
-        return { isOnLeave: true, leaveType: "shop" };
+        setLeaveType("shop");
+        return true;
       }
       if (
         String(leave.groomerId?._id || leave.groomerId) ===
         String(groomerData._id)
       ) {
-        return { isOnLeave: true, leaveType: "groomer" };
+        setLeaveType("groomer");
+        return true;
       }
     }
 
-    return { isOnLeave: false, leaveType: null };
+    setLeaveType(null);
+    return false;
   }, [selectedDate, leaves, groomerData]);
 
-  // Booked times
+  // Fetch booked times when date or groomer changes
   useEffect(() => {
-    let cancelled = false;
-
     if (!selectedDate || !groomerData) {
       setBookedTimes([]);
-      setBookedTimesReady(true);
-      return () => {
-        cancelled = true;
-      };
+      return;
     }
-
-    setBookedTimesReady(false);
 
     fetch(
       `/api/proxy?endpoint=getAppointment&shopId=${SHOP_ID}&groomerId=${groomerData._id}&status=active,confirmed&date=${toYMD(selectedDate)}`,
     )
       .then((r) => r.json())
-      .then((d) => {
-        if (cancelled) return;
-        setBookedTimes(
-          d.success ? (d.appointments || []).map((a) => a.time) : [],
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setBookedTimes([]);
-      })
-      .finally(() => {
-        if (!cancelled) setBookedTimesReady(true);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+      .then((d) =>
+        setBookedTimes(d.success ? d.appointments.map((a) => a.time) : []),
+      );
   }, [selectedDate, groomerData]);
 
-  // Back button handling
   useEffect(() => {
     const handleBack = () => {
       if (sessionStorage.getItem("rescheduleBooking")) {
         sessionStorage.removeItem("rescheduleBooking");
+
         router.replace("/pages/bookingHistory?closeBooking=true");
       }
     };
+
     window.addEventListener("popstate", handleBack);
-    return () => window.removeEventListener("popstate", handleBack);
+
+    return () => {
+      window.removeEventListener("popstate", handleBack);
+    };
   }, [router]);
 
-  // Time slots
+  // Generate time slots
   const timeSlots = useMemo(() => {
-    if (!selectedDate || !shopData || isOnLeave || !today) return [];
+    if (!selectedDate || !shopData || isOnLeave) return [];
 
     const dayName = selectedDate.toLocaleDateString("en-US", {
       weekday: "long",
     });
-    const day = shopData.openingHours?.find((d) => d.day === dayName);
+    const day = shopData.openingHours.find((d) => d.day === dayName);
     if (!day) return [];
 
     let start = toMin(day.open);
     const end = toMin(day.close);
 
-    // Trim past slots only for today
-    if (toYMD(selectedDate) === toYMD(today)) {
-      const now = today; // reuse the stable today value
+    // Trim past slots for today
+    if (toYMD(selectedDate) === toYMD(new Date())) {
+      const now = new Date();
       const current = now.getHours() * 60 + now.getMinutes();
       start = Math.max(start, Math.ceil(current / 30) * 30);
     }
@@ -822,10 +777,11 @@ export default function TimeslotPage() {
       slots.push(to12(t));
     }
     return slots;
-  }, [selectedDate, shopData, isOnLeave, today]);
+  }, [selectedDate, shopData, isOnLeave]);
 
+  // ✅ useMemo — not recomputed unless serviceData changes
   const totalPrice = useMemo(
-    () => serviceData.reduce((s, x) => s + (x.displayPrice || 0), 0),
+    () => serviceData.reduce((s, x) => s + x.displayPrice, 0),
     [serviceData],
   );
 
@@ -847,7 +803,9 @@ export default function TimeslotPage() {
       try {
         const response = await fetch("/api/proxy", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({
             endpoint: "putAppointment",
             appointmentId,
@@ -860,14 +818,20 @@ export default function TimeslotPage() {
         const result = await response.json();
 
         if (!response.ok || !result.success) {
-          alert(result.message || "Unable to reschedule. Please try again.");
+          alert(
+            result.message ||
+              "Unable to reschedule appointment. Please try again.",
+          );
           return;
         }
 
+        // Clear reschedule data only after successful API update
         sessionStorage.removeItem("rescheduleBooking");
+
         router.push("/pages/bookingHistory");
         return;
-      } catch {
+      } catch (error) {
+        // console.error("Reschedule error:", error);
         alert("Something went wrong. Please try again.");
         return;
       }
@@ -897,16 +861,9 @@ export default function TimeslotPage() {
     router,
   ]);
 
-  // ✅ Only show full-screen loader if we don't even have groomer data yet
-  if (!groomerData) return <LottieLoader />;
+  if (loading || !today) return <LottieLoader />;
 
-  const canContinue = Boolean(
-    shopReady &&
-      bookedTimesReady &&
-      selectedDate &&
-      selectedTime &&
-      !isOnLeave
-  );
+  const canContinue = selectedDate && selectedTime && !isOnLeave;
 
   return (
     <div className="p-6 bg-white min-h-screen pb-28">
@@ -914,7 +871,7 @@ export default function TimeslotPage() {
         Time Slot Booking
       </h1>
 
-      {/* Groomer Card — shows immediately */}
+      {/* Groomer Card */}
       <div className="border rounded-xl border-gray-300 mb-6 overflow-hidden">
         <div
           className="flex justify-between p-4 items-center cursor-pointer"
@@ -951,7 +908,10 @@ export default function TimeslotPage() {
           <h3 className="font-semibold text-black mb-2">Selected Services:</h3>
           <ul className="list-disc list-inside text-gray-700 space-y-1">
             {serviceData.map((service) => (
-              <li key={service._id} className="text-gray-500 text-sm font-normal">
+              <li
+                key={service._id}
+                className="text-gray-500 text-sm font-normal"
+              >
                 {service.serviceName} — ₹{service.displayPrice}
               </li>
             ))}
@@ -959,57 +919,45 @@ export default function TimeslotPage() {
         </div>
       </div>
 
-      {/* Date Select — shows as soon as today is ready */}
+      {/* Date Select */}
       <h2 className="font-semibold text-lg text-gray-800 mb-2">Select Date</h2>
       <div className="mb-6 p-4 border rounded-xl border-gray-300 bg-white">
-        {!today ? (
-          <div className="h-24 flex items-center justify-center text-gray-400 text-sm">
-            Loading dates...
-          </div>
-        ) : (
-          <>
-            <div className="text-center mb-3 text-gray-700 font-semibold">
-              {(selectedDate || today)
-                .toLocaleString("en-US", { month: "short", year: "numeric" })
-                .toUpperCase()}
-            </div>
+        <div className="text-center mb-3 text-gray-700 font-semibold">
+          {(selectedDate || today)
+            .toLocaleString("en-US", { month: "short", year: "numeric" })
+            .toUpperCase()}
+        </div>
 
-            <div className="flex gap-3 justify-center">
-              {dateList.map((d) => {
-                const dayNumber = dayjs.utc(d).date();
-                const dayName = dayjs.utc(d).format("ddd").toUpperCase();
-                const isSelected =
-                  selectedDate &&
-                  dayjs.utc(selectedDate).isSame(dayjs.utc(d), "day");
+        <div className="flex gap-3 justify-center">
+          {dateList.map((d) => {
+            const dayNumber = dayjs.utc(d).date();
+            const dayName = dayjs.utc(d).format("ddd").toUpperCase();
+            const isSelected =
+              selectedDate &&
+              dayjs.utc(selectedDate).isSame(dayjs.utc(d), "day");
 
-                return (
-                  <button
-                    key={d.toISOString()}
-                    onClick={() => handleDateSelect(d)}
-                    className={`w-18 h-20 rounded-xl border flex flex-col items-center justify-center transition-colors duration-200 ${
-                      isSelected ? "bg-black" : "bg-white hover:bg-gray-100"
-                    }`}
-                  >
-                    <span
-                      className={`text-lg font-semibold ${
-                        isSelected ? "text-green-500" : "text-gray-600"
-                      }`}
-                    >
-                      {dayNumber}
-                    </span>
-                    <span
-                      className={`text-sm ${
-                        isSelected ? "text-green-500" : "text-gray-500"
-                      }`}
-                    >
-                      {dayName}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
+            return (
+              <button
+                key={d.toISOString()}
+                onClick={() => handleDateSelect(d)}
+                className={`w-18 h-20 rounded-xl border flex flex-col items-center justify-center transition-colors duration-200 ${
+                  isSelected ? "bg-black" : "bg-white hover:bg-gray-100"
+                }`}
+              >
+                <span
+                  className={`text-lg font-semibold ${isSelected ? "text-green-500" : "text-gray-600"}`}
+                >
+                  {dayNumber}
+                </span>
+                <span
+                  className={`text-sm ${isSelected ? "text-green-500" : "text-gray-500"}`}
+                >
+                  {dayName}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Leave / Empty messages */}
@@ -1021,16 +969,14 @@ export default function TimeslotPage() {
         </div>
       )}
 
-      {/* Time Slots section */}
-      {!selectedDate ? null : !shopReady ? (
-        <div className="py-8 text-center text-gray-500 text-sm">
-          Loading available times...
-        </div>
-      ) : isOnLeave ? null : timeSlots.length === 0 ? (
+      {!isOnLeave && selectedDate && timeSlots.length === 0 && (
         <div className="p-4 mb-4 border border-yellow-300 bg-yellow-50 rounded-lg text-sm text-yellow-800">
           No slots available for this day. Please try another date.
         </div>
-      ) : (
+      )}
+
+      {/* Time Slots */}
+      {!isOnLeave && selectedDate && timeSlots.length > 0 && (
         <>
           <h2 className="font-semibold mb-3 text-lg text-gray-800">
             Select Time

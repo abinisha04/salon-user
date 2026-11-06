@@ -1,314 +1,3 @@
-// // Before Optimize code
-
-// "use client";
-
-// import { useEffect, useState, useMemo, useCallback } from "react";
-// import Image from "next/image";
-// import { useRouter } from "next/navigation";
-// import { Drawer, message } from "antd";
-// import LottieLoader from "@/app/utils/loading";
-// import "@ant-design/v5-patch-for-react-19";
-// import { getMessaging, getToken } from "firebase/messaging";
-// import { app } from "@/app/lib/firebase";
-
-// // ✅ FIX #1: Moved outside component — only created once, not on every render
-// const AVATARS = [
-//   "https://firebasestorage.googleapis.com/v0/b/bucket-list-27aee.appspot.com/o/salon_profile_1.jpg?alt=media&token=2486fbc2-5409-448f-984e-2a18e32b6f7a",
-//   "https://firebasestorage.googleapis.com/v0/b/bucket-list-27aee.appspot.com/o/salon_profile_2.jpg?alt=media&token=d3d6502b-354d-4b40-bfd5-c75f5811451f",
-//   "https://firebasestorage.googleapis.com/v0/b/bucket-list-27aee.appspot.com/o/salon_profile_3.jpg?alt=media&token=861ec77e-d857-4087-960f-1d70fb06371f",
-//   "https://firebasestorage.googleapis.com/v0/b/bucket-list-27aee.appspot.com/o/salon_profile_4.jpg?alt=media&token=f663652e-7aff-4197-ba20-c720d97f9b0e",
-//   "https://firebasestorage.googleapis.com/v0/b/bucket-list-27aee.appspot.com/o/salon_profile_5.jpg?alt=media&token=39e74a26-959c-4f2e-a566-098028681d0a",
-//   "https://firebasestorage.googleapis.com/v0/b/bucket-list-27aee.appspot.com/o/salon_profile_6.jpg?alt=media&token=b05f0281-a421-49e3-a3e5-55a07aeb1992",
-// ];
-
-// // ✅ FIX #2: Moved outside component — regex compiled once, not on every render
-// const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// // ✅ FIX #3: Read env once at module level
-// const SHOP_ID = process.env.NEXT_PUBLIC_SHOP_ID;
-
-// export default function SignupPage() {
-//   const router = useRouter();
-
-//   const [showAvatarSheet, setShowAvatarSheet] = useState(false);
-//   const [isSubmitting, setIsSubmitting] = useState(false);
-//   const [form, setForm] = useState({
-//     profileImage: null,
-//     name: "",
-//     email: "",
-//     phone: "",
-//     age: "",
-//     gender: "",
-//   });
-//   const [errors, setErrors] = useState({});
-
-//   /* 🔔 REGISTER SERVICE WORKER */
-//   useEffect(() => {
-//     if (!("serviceWorker" in navigator)) return;
-//     navigator.serviceWorker
-//       .register("/firebase-messaging-sw.js")
-//       .then(() => console.log("✅ FCM SW Registered"))
-//       .catch(console.error);
-//   }, []);
-
-//   /* 🔔 FOREGROUND NOTIFICATION
-//    * ✅ FIX #4: Removed duplicate top-level import of getMessaging/onMessage.
-//    * Dynamic import here is correct — keeps firebase/messaging out of the initial bundle.
-//    */
-//   useEffect(() => {
-//     if (!("serviceWorker" in navigator) || !("Notification" in window)) return;
-
-//     const initFCM = async () => {
-//       try {
-//         const { getMessaging, onMessage } = await import("firebase/messaging");
-//         const messaging = getMessaging(app);
-//         onMessage(messaging, (payload) => {
-//           console.log("📩 Foreground:", payload);
-//           if (Notification.permission === "granted") {
-//             new Notification(payload.data?.title || "Notification", {
-//               body: payload.data?.body || "",
-//             });
-//           }
-//         });
-//       } catch (err) {
-//         console.error("❌ FCM init failed:", err);
-//       }
-//     };
-
-//     initFCM();
-//   }, []);
-
-//   /* 🔔 GET FCM TOKEN AT SIGNUP
-//    * ✅ FIX #5: Wrapped in useCallback so it's not recreated on every render
-//    */
-//   const getSignupFCMToken = useCallback(async () => {
-//     try {
-//       if (!("Notification" in window)) return null;
-//       const permission = await Notification.requestPermission();
-//       if (permission !== "granted") return null;
-
-//       const messaging = getMessaging(app);
-//       const token = await getToken(messaging, {
-//         vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
-//       });
-//       return token || null;
-//     } catch (err) {
-//       console.error("FCM Error:", err);
-//       return null;
-//     }
-//   }, []);
-
-//   /* AUTO PICK RANDOM AVATAR */
-//   useEffect(() => {
-//     const randomAvatar = AVATARS[Math.floor(Math.random() * AVATARS.length)];
-//     setForm((prev) => ({ ...prev, profileImage: randomAvatar }));
-//   }, []); // ✅ Safe: AVATARS is now a stable module-level constant
-
-//   /* FIELD-LEVEL VALIDATION
-//    * ✅ FIX #6: Wrapped in useCallback — stable reference, not recreated each render
-//    */
-//   const validateField = useCallback((key, value) => {
-//     let error = "";
-//     if (key === "name" && !value.trim()) error = "Full name is required";
-//     if (key === "email" && !EMAIL_REGEX.test(value)) error = "Enter a valid email address";
-//     if (key === "phone" && value.length !== 10) error = "Phone number must be 10 digits";
-//     if (key === "age") {
-//       const age = Number(value);
-//       if (!age || age < 1 || age > 99) error = "Please enter the age";
-//     }
-//     if (key === "gender" && !value) error = "Please select gender";
-//     setErrors((prev) => ({ ...prev, [key]: error }));
-//   }, []);
-
-//   const handleChange = useCallback((key, value) => {
-//     setForm((prev) => ({ ...prev, [key]: value }));
-//     validateField(key, value);
-//   }, [validateField]);
-
-//   /* FINAL FORM VALIDATION */
-//   const validateForm = useCallback(() => {
-//     const newErrors = {};
-//     if (!form.profileImage) newErrors.profileImage = "Profile image required";
-//     if (!form.name.trim()) newErrors.name = "Full name is required";
-//     if (!EMAIL_REGEX.test(form.email)) newErrors.email = "Valid email required";
-//     if (form.phone.length !== 10) newErrors.phone = "Phone must be 10 digits";
-//     const age = Number(form.age);
-//     if (!age || age < 1 || age > 99) newErrors.age = "Age must be 1 to 99";
-//     if (!form.gender) newErrors.gender = "Select gender";
-//     setErrors(newErrors);
-//     return Object.keys(newErrors).length === 0;
-//   }, [form]);
-
-//   // ✅ FIX #7: useMemo so this boolean is not recomputed on every render
-//   const isFormValid = useMemo(
-//     () =>
-//       Object.values(errors).every((e) => !e) &&
-//       !!form.profileImage &&
-//       !!form.name &&
-//       !!form.email &&
-//       !!form.phone &&
-//       !!form.age &&
-//       !!form.gender,
-//     [errors, form]
-//   );
-
-//   /* SUBMIT SIGNUP */
-//   const handleSubmit = useCallback(async () => {
-//     if (!validateForm()) return;
-
-//     try {
-//       setIsSubmitting(true);
-//       const fcmToken = await getSignupFCMToken();
-
-//       const res = await fetch(`/api/proxy`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ endpoint: "postUser", ...form, shopId: SHOP_ID, fcmToken }),
-//       });
-
-//       const result = await res.json();
-
-//       if (!result?.user) {
-//         message.error(result.error || "Signup failed");
-//         setIsSubmitting(false);
-//         return;
-//       }
-
-//       message.success("Profile created 🎉");
-//       localStorage.setItem("user", JSON.stringify(result.user));
-//       router.replace("/pages/newUser");
-//     } catch (err) {
-//       console.error(err);
-//       message.error("Something went wrong");
-//       setIsSubmitting(false);
-//     }
-//   }, [validateForm, getSignupFCMToken, form, router]);
-
-//   if (isSubmitting) return <LottieLoader />;
-
-//   return (
-//     <div className="min-h-screen bg-white p-5 pb-28">
-//       <h1 className="text-xl font-semibold mt-14 mb-6">Complete Your Profile</h1>
-
-//       {/* PROFILE IMAGE PICKER */}
-//       <button
-//         onClick={() => setShowAvatarSheet(true)}
-//         className="w-full flex items-center gap-4 border border-gray-300 rounded-2xl p-4 mb-6"
-//       >
-//         <div className="relative w-16 h-16 rounded-full overflow-hidden">
-//           {form.profileImage && (
-//             <Image src={form.profileImage} alt="Profile" fill sizes="64px" className="object-cover" />
-//           )}
-//         </div>
-//         <div className="text-left">
-//           <p className="font-semibold">Profile Photo</p>
-//           <p className="text-sm text-gray-400">Choose an avatar for your profile</p>
-//         </div>
-//       </button>
-
-//       {/* FORM FIELDS */}
-//       <div className="space-y-4">
-//         <input
-//           placeholder="Full Name"
-//           value={form.name}
-//           onChange={(e) => handleChange("name", e.target.value)}
-//           className="w-full border border-gray-300 rounded-lg p-3"
-//         />
-//         {errors.name && <p className="text-red-500 text-sm">{errors.name}</p>}
-
-//         <input
-//           type="email"
-//           placeholder="Email Address"
-//           value={form.email}
-//           onChange={(e) => handleChange("email", e.target.value)}
-//           className="w-full border border-gray-300 rounded-lg p-3"
-//         />
-//         {errors.email && <p className="text-red-500 text-sm">{errors.email}</p>}
-
-//         {/* ✅ FIX #8: type="tel" instead of type="number" — better mobile UX, no scroll-to-change */}
-//         <input
-//           type="tel"
-//           inputMode="numeric"
-//           placeholder="Phone Number"
-//           value={form.phone}
-//           onChange={(e) => {
-//             const v = e.target.value.replace(/\D/g, "");
-//             if (v.length <= 10) handleChange("phone", v);
-//           }}
-//           className="w-full border border-gray-300 rounded-lg p-3"
-//         />
-//         {errors.phone && <p className="text-red-500 text-sm">{errors.phone}</p>}
-
-//         {/* ✅ FIX #9: type="text" + inputMode="numeric" for age — prevents scroll spinner */}
-//         <input
-//           type="text"
-//           inputMode="numeric"
-//           placeholder="Age"
-//           value={form.age}
-//           onChange={(e) => {
-//             const v = e.target.value.replace(/\D/g, "");
-//             if (v.length <= 2) handleChange("age", v);
-//           }}
-//           className="w-full border border-gray-300 rounded-lg p-3"
-//         />
-//         {errors.age && <p className="text-red-500 text-sm">{errors.age}</p>}
-
-//         <select
-//           value={form.gender}
-//           onChange={(e) => handleChange("gender", e.target.value)}
-//           className="w-full border border-gray-300 rounded-lg p-3 appearance-none bg-white"
-//         >
-//           <option value="">Select Gender</option>
-//           <option value="Male">Male</option>
-//           <option value="Female">Female</option>
-//           <option value="Other">Other</option>
-//         </select>
-//         {errors.gender && <p className="text-red-500 text-sm">{errors.gender}</p>}
-//       </div>
-
-//       {/* SUBMIT BUTTON */}
-//       <div className="fixed bottom-0 left-0 w-full p-4 bg-white border-t">
-//         <button
-//           disabled={!isFormValid}
-//           onClick={handleSubmit}
-//           className={`w-full py-3 rounded-lg font-semibold ${
-//             isFormValid ? "bg-black text-green-500" : "bg-gray-300 text-gray-500"
-//           }`}
-//         >
-//           {isFormValid ? "Welcome" : "Continue"}
-//         </button>
-//       </div>
-
-//       {/* AVATAR SELECTION DRAWER */}
-//       <Drawer
-//         open={showAvatarSheet}
-//         onClose={() => setShowAvatarSheet(false)}
-//         placement="bottom"
-//         height={420}
-//         title="Choose an Avatar"
-//       >
-//         <div className="grid grid-cols-4 gap-4">
-//           {AVATARS.map((src) => (
-//             <button
-//               key={src}
-//               onClick={() => {
-//                 handleChange("profileImage", src);
-//                 setShowAvatarSheet(false);
-//               }}
-//               className={`relative w-full aspect-square rounded-full overflow-hidden ${
-//                 form.profileImage === src ? "ring-2 ring-green-500" : "hover:ring-2 ring-gray-300"
-//               } transition`}
-//             >
-//               <Image src={src} alt="" fill sizes="64px" className="object-cover" />
-//             </button>
-//           ))}
-//         </div>
-//       </Drawer>
-//     </div>
-//   );
-// }
-
-// //  Optimize code
 
 "use client";
 
@@ -531,7 +220,9 @@ export default function SignupPage() {
     setIsSubmitting(true);
 
     try {
-      // Navigate + create user first
+      // ✅ FCM token is non-blocking — if it fails, signup still proceeds
+      const fcmToken = await getSignupFCMToken();
+
       const res = await fetch("/api/proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -539,48 +230,38 @@ export default function SignupPage() {
           endpoint: "postUser",
           ...form,
           shopId: SHOP_ID,
-          fcmToken: null, // send null first, update later
+          fcmToken,
         }),
       });
 
+      // ✅ FIX: Guard against non-OK HTTP responses (500, 404, etc.)
       if (!res.ok) {
         throw new Error(`Server error: ${res.status}`);
       }
 
       const result = await res.json();
 
+      // console.log("Signup status:", res.status);
+      // console.log("Signup response:", result);
+
+      // ✅ FIX: Defensive check — API may return success:false without throwing
       if (!result?.user) {
         message.error(result?.error || "Signup failed. Please try again.");
         setIsSubmitting(false);
         return;
       }
 
+      // ✅ FIX: Safe localStorage write (crash-safe for private/restricted browsers)
       const saved = safeStorage.set("user", result.user);
       if (!saved) {
-        // still continue
+        // Still proceed — session will work even if localStorage failed
+        // console.warn("localStorage unavailable — user data not persisted");
       }
 
       message.success("Profile created 🎉");
       router.replace("/pages/newUser");
-
-      // Run FCM in background (same logic, not awaited)
-      getSignupFCMToken()
-        .then((fcmToken) => {
-          if (fcmToken) {
-            return fetch("/api/proxy", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                endpoint: "updateFcmToken",
-                fcmToken,
-              }),
-            });
-          }
-        })
-        .catch((err) => {
-          console.error("FCM token error:", err);
-        });
     } catch (err) {
+      // console.error("Signup error:", err);
       message.error(
         "Something went wrong. Please check your connection and try again.",
       );
@@ -772,3 +453,4 @@ export default function SignupPage() {
     </div>
   );
 }
+
