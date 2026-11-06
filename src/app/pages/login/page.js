@@ -18,7 +18,7 @@ async function getCurrentDeviceFcmToken() {
     }
 
     if (!VAPID_KEY) {
-      console.error("Firebase VAPID key is missing.");
+      // console.error("Firebase VAPID key is missing.");
       return null;
     }
 
@@ -49,7 +49,7 @@ async function getCurrentDeviceFcmToken() {
 
     return token || null;
   } catch (error) {
-    console.error("FCM token generation failed:", error);
+    // console.error("FCM token generation failed:", error);
     return null;
   }
 }
@@ -166,13 +166,13 @@ export default function LoginPage() {
           })
           .then((updateResult) => {
             if (updateResult && !updateResult.success) {
-              console.error("FCM update failed:", updateResult.message);
+              // console.error("FCM update failed:", updateResult.message);
             } else if (updateResult) {
-              console.log("Latest device FCM token updated.");
+              // console.log("Latest device FCM token updated.");
             }
           })
           .catch((error) => {
-            console.error("FCM update request failed:", error);
+            // console.error("FCM update request failed:", error);
           });
       } else if (result.isNewUser === true) {
         localStorage.removeItem("user");

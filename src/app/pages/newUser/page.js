@@ -442,7 +442,7 @@ export default function Newuser() {
 
     router.push("/pages/timeslot");
   }, [selectedGroomer, selectedServices, groomers, services, router]);
-  if (isLoading) return <AppLoading />;
+  // if (isLoading) return <AppLoading />;
 
   const canContinue = selectedServices.length > 0 && !!selectedGroomer;
 

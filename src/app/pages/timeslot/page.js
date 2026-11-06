@@ -865,7 +865,7 @@ export default function TimeslotPage() {
     router,
   ]);
 
-  if (loading || !today) return <LottieLoader />;
+  // if (loading || !today) return <LottieLoader />;
 
   const canContinue = selectedDate && selectedTime && !isOnLeave;
 

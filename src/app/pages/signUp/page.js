@@ -132,12 +132,12 @@ export default function SignupPage() {
       const { getMessaging, getToken } = await import("firebase/messaging");
       const messaging = getMessaging(app);
       const token = await getToken(messaging, { vapidKey: VAPID_KEY });
-      console.log("Mobile FCM token:", token);
-      console.log("Customer FCM Token:", token);
-      console.log("Token generated:", !!token);
+      // console.log("Mobile FCM token:", token);
+      // console.log("Customer FCM Token:", token);
+      // console.log("Token generated:", !!token);
       return token || null;
     } catch (err) {
-      console.error("FCM token error:", err);
+      // console.error("FCM token error:", err);
       return null; // ✅ Non-blocking — signup continues even if FCM fails
     }
   }, []);
