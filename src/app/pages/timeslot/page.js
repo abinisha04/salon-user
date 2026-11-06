@@ -539,50 +539,6 @@
 
 //Optimize code
 
-"use client";
-
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { ChevronDown } from "lucide-react";
-import LottieLoader from "@/app/utils/loading";
-import dayjs from "dayjs";
-import utc from "dayjs/plugin/utc";
-import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
-import isSameOrBefore from "dayjs/plugin/isSameOrBefore";
-import isBetween from "dayjs/plugin/isBetween";
-
-dayjs.extend(utc);
-dayjs.extend(isSameOrAfter);
-dayjs.extend(isSameOrBefore);
-dayjs.extend(isBetween);
-
-// ✅ Module-level constants
-const SHOP_ID = process.env.NEXT_PUBLIC_SHOP_ID;
-
-// ✅ Extracted pure helpers — not recreated on render
-const toYMD = (date) => {
-  const d = new Date(date);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
-
-const normalizeUTC = (date) => dayjs.utc(date).startOf("day");
-
-const toMin = (t) => {
-  const [time, m] = t.split(" ");
-  let [h, mi] = time.split(":").map(Number);
-  if (m === "PM" && h !== 12) h += 12;
-  if (m === "AM" && h === 12) h = 0;
-  return h * 60 + mi;
-};
-
-const to12 = (m) => {
-  const h = Math.floor(m / 60) % 12 || 12;
-  const mi = m % 60;
-  const ap = Math.floor(m / 60) >= 12 ? "PM" : "AM";
-  return `${h}:${mi.toString().padStart(2, "0")} ${ap}`;
-};
-
 export default function TimeslotPage() {
   const router = useRouter();
 
@@ -599,7 +555,11 @@ export default function TimeslotPage() {
   const [appointmentId, setAppointmentId] = useState(null);
   const [leaveType, setLeaveType] = useState(null);
 
-  const [today] = useState(() => new Date());
+  const [today, setToday] = useState(null);
+
+  useEffect(() => {
+    setToday(new Date());
+  }, []);
 
   // Load session data
   // Load session data
